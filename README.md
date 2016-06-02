@@ -1,6 +1,8 @@
 ###Learning Deep Representations of Fine-grained Visual Descriptions
 #####Scott Reed, Zeynep Akata, Bernt Schiele, Honglak Lee
 
+<img src="images/description_embedding.jpg" width="500px" height="250px"/>
+
 How to train a char-CNN-RNN model:
 
 1. Download the [birds](https://drive.google.com/open?id=0B0ywwgffWnLLZW9uVHNjb2JmNlE)
