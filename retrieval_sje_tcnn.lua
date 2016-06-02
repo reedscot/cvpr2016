@@ -1,15 +1,14 @@
--- Necessary functionalities
-require 'nn'
-require 'nngraph'
-require 'cutorch'
-require 'cunn'
-require 'cudnn'
+-- Retrieve images based on captions.
+
+require('nn')
+require('nngraph')
+require('cutorch')
+require('cunn')
+require('cudnn')
+require('util.util_retrieval')
 
 local model_utils = require('util.model_utils')
 
-cutorch.setDevice(1)
-
--- Encode query document using alphabet.
 local alphabet = "abcdefghijklmnopqrstuvwxyz0123456789-,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{} "
 local dict = {}
 for i = 1,#alphabet do
@@ -19,8 +18,6 @@ end
 -------------------------------------------------
 cmd = torch.CmdLine()
 cmd:option('-data_dir','data','data directory.')
-cmd:option('-image_dir','images','image subdirectory.')
-cmd:option('-txt_dir','','text subdirectory.')
 cmd:option('-savefile','sje_tcnn','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
 cmd:option('-symmetric',1,'symmetric sje')
@@ -29,9 +26,9 @@ cmd:option('-testclasses', 'testclasses.txt', 'validation or test classes to be 
 cmd:option('-ids_file', 'trainvalids.txt', 'file specifying which class labels were used for training.')
 cmd:option('-model','','model to load. If blank then above options will be used.')
 cmd:option('-txt_limit',0,'if 0 then use all available text. Otherwise limit the number of documents per class')
-cmd:option('-num_caption',10,'number of captions per image to be used for training')
+cmd:option('-num_caption',10,'numner of captions per image to be used for training')
+cmd:option('-outfile', 'results/roc.csv', 'output csv file with ROC curves.')
 cmd:option('-ttype','char','word|char')
-cmd:option('-gpuid',0,'gpu to use')
 
 opt = cmd:parse(arg)
 local model
@@ -42,28 +39,17 @@ else
 end
 -----------------------------------------------------------
 
-if opt.gpuid >= 0 then
-  cutorch.setDevice(opt.gpuid+1)
-end
-
 local doc_length = model.opt.doc_length
 local protos = model.protos
 protos.enc_doc:evaluate()
 protos.enc_image:evaluate()
+--print(model.opt)
 
 function extract_img(filename)
-    local data = torch.load(filename)
-    if data:size():size() == 3 then
-        local fea = data[{{},{},1}]
-        fea = fea:float():cuda()
-        local out = protos.enc_image:forward(fea)
-        return out:float()
-    else
-        local fea = data[{{},{},{},{},1}]
-        fea = fea:float():cuda()
-        local out = protos.enc_image:forward(fea)
-        return out:float()
-    end
+    local fea = torch.load(filename)[{{},{},1}]
+    fea = fea:float():cuda()
+    local out = protos.enc_image:forward(fea):clone()
+    return out:cuda()
 end
 
 function extract_txt(filename)
@@ -76,7 +62,6 @@ end
 
 function extract_txt_word(filename)
     -- average all text features together.
-    --local txt = torch.load(filename):permute(1,3,2):add(1)
     local txt = torch.load(filename):permute(1,3,2)
     txt = txt:reshape(txt:size(1)*txt:size(2),txt:size(3)):float():cuda()
     if opt.txt_limit > 0 then
@@ -116,8 +101,8 @@ function extract_txt_word(filename)
         end
     end
     txt_mat = txt_mat:float():cuda()
-    local out = protos.enc_doc:forward(txt_mat)
-    out = torch.mean(out,1):float()
+    local out = protos.enc_doc:forward(txt_mat):clone()
+    out = torch.mean(out,1)
     return out
 end
 
@@ -145,60 +130,36 @@ function extract_txt_char(filename)
         end
     end
     txt_mat = txt_mat:float():cuda()
-    local out = protos.enc_doc:forward(txt_mat)
-    return torch.mean(out,1):float()
-end
-
-function classify(txt_dir, img_dir, cls_list)
-    local acc = 0.0
-    local total = 0.0
-    local fea_img = {}
-    local fea_txt = {}
-    for fname in io.lines(cls_list) do
-        local imgpath = img_dir .. '/' .. fname .. '.t7'
-        local txtpath = txt_dir .. '/' .. fname .. '.t7'
-        fea_img[#fea_img + 1] = extract_img(imgpath)
-        fea_txt[#fea_txt + 1] = extract_txt(txtpath)
-    end
-    for i = 1,#fea_img do
-        -- loop over individual images.
-        for k = 1,fea_img[i]:size(1) do
-            local best_match = 1
-            local best_score = -math.huge
-            for j = 1,#fea_txt do
-                local cur_score = torch.dot(fea_img[i][{k,{}}], fea_txt[j])
-                if cur_score > best_score then
-                    best_match = j
-                    best_score = cur_score
-                end
-            end
-            if best_match == i then
-                acc = acc + 1
-            end
-            total = total + 1
-        end
-    end
-    return acc / total
+    local out = protos.enc_doc:forward(txt_mat):clone()
+    return torch.mean(out,1)
 end
 
 local txt_dir
-if opt.txt_dir == '' then
-    if opt.ttype == 'char' then
-        txt_dir = string.format('%s/text_c%d', opt.data_dir, opt.num_caption)
-    else -- word
-        txt_dir = string.format('%s/word_c%d', opt.data_dir, opt.num_caption)
-    end
-else
-    txt_dir = string.format('%s/%s', opt.data_dir, opt.txt_dir)
-end
-if opt.ttype == 'word' then
+if opt.ttype == 'char' then
+    txt_dir = string.format('%s/text_c%d', opt.data_dir, opt.num_caption)
+else -- word
+    txt_dir = string.format('%s/word_c%d', opt.data_dir, opt.num_caption)
     vocab_size = 0
     for k,v in pairs(model.vocab) do
         vocab_size = vocab_size + 1
     end
 end
-local img_dir = string.format('%s/%s', opt.data_dir, opt.image_dir)
+local img_dir = string.format('%s/images', opt.data_dir)
 local testcls = string.format('%s/%s', opt.data_dir, opt.testclasses)
-local test_acc     = classify(txt_dir, img_dir, testcls)
-print(string.format('Average top-1 val/test accuracy: %6.4f\n', test_acc))
+
+local kvals = { 1, 5, 10, 50 }
+local res = retrieval_at_k(txt_dir, img_dir, testcls, kvals, torch.dot, 1)
+--print(string.format('mAP@1: %6.4f\n', res[1]))
+--print(string.format('mAP@5: %6.4f\n', res[5]))
+--print(string.format('mAP@10: %6.4f\n', res[10]))
+print(string.format('mAP@50: %6.4f\n', res[50]))
+
+--file = io.open(opt.outfile, "w")
+--io.output(file)
+io.write(string.format('%.4f,%.4f,%.4f,%.4f\n',
+                       res[1],
+                       res[5],
+                       res[10],
+                       res[50]))
+io.close(file)
 
