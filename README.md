@@ -1,5 +1,5 @@
 ###<a href="http://arxiv.org/abs/1605.05395">Learning Deep Representations of Fine-grained Visual Descriptions</a>
-#####Scott Reed, Zeynep Akata, Bernt Schiele, Honglak Lee
+#####Scott Reed, Zeynep Akata, Honglak Lee, Bernt Schiele
 
 <img src="images/description_embedding.jpg" width="500px" height="250px"/>
 
