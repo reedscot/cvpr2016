@@ -16,6 +16,11 @@ Scott Reed, Zeynep Akata, Honglak Lee, Bernt Schiele
 2. Modify the eval bash script (e.g. `eval_cub_cls.sh` for birds) to point to your saved checkpoint.
 3. Run the eval script: `./eval_cub_cls.sh`
 
+#####Pretrained models:
+
+* [Char-CNN-RNN for birds](https://drive.google.com/open?id=0B0ywwgffWnLLYUNVWVV5Sm1xcWc)
+* [Char-CNN-RNN for flowers](https://drive.google.com/open?id=0B0ywwgffWnLLV205RXF4Y2hFY1E)
+
 #####Citation
 
 If you find this work useful, please cite as follows:
